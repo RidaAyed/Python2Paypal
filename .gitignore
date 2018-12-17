@@ -125,3 +125,6 @@ Vagrant*
 # Result files
 trx.csv
 trx.tsv
+
+# Client secrets file
+secrets.yml
