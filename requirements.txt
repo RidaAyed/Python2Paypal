@@ -1,6 +1,7 @@
 docopt==0.6.2
 oauthlib
 progress
+pyyaml
 requests
 requests-oauthlib
 sty
