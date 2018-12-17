@@ -47,6 +47,7 @@ from requests_oauthlib import OAuth2Session
 import csv
 import json
 import logging
+import os
 import re
 import requests
 import sys
@@ -127,7 +128,7 @@ def validate_params(params):
 
     return params
 
-def load_secrets(secrets_file="secrets.yml"):
+def load_secrets(secrets_file=None):
     """
     Method for loading the secrets from the environment or from the secrets file
 
@@ -136,16 +137,21 @@ def load_secrets(secrets_file="secrets.yml"):
     :return: loaded secrets
     :rtype: dict
     """
-    with open(secrets_file, 'r') as stream:
-        try:
-            data = (yaml.load(stream))
-        except Exception as exc:
-            complain("Exception occurred while reading " + secrets_file + ": " + str(exc))
+    if secrets_file == None:
+      data = {}
+      data['client_id'] = os.environ['CLIENT_ID']
+      data['client_secret'] = os.environ['CLIENT_SECRET']
+    else:
+      with open(secrets_file, 'r') as stream:
+          try:
+              data = (yaml.load(stream))
+          except Exception as exc:
+              complain("Exception occurred while reading " + secrets_file + ": " + str(exc))
 
-    if "client_id" not in data.keys():
-        complain("Missing client_id in " + secrets_file)
-    if "client_secret" not in data.keys():
-        complain("Missing client_secret in " + secrets_file)
+      if "client_id" not in data.keys():
+          complain("Missing client_id in " + secrets_file)
+      if "client_secret" not in data.keys():
+          complain("Missing client_secret in " + secrets_file)
 
     return data
 
