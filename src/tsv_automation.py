@@ -50,6 +50,7 @@ import logging
 import re
 import requests
 import sys
+import yaml
 
 import pprint
 
@@ -59,10 +60,6 @@ FILENAME = 'trx.tsv'
 # Currently only -HHMM works, see https://github.com/paypal/PayPal-REST-API-issues/issues/211
 TIMEZONE_OFFSET = '-0000'
 BASE_CURRENCY = 'EUR'
-
-# Sandbox id/secret
-client_id = 'AcJucMse9ihuHgPKA1L_TW5xg4qhor5NoI1M6P2NAWxvTfY0qNUtmvIpoLwGRmkVZCHn4HRj1H0xqxbY'
-client_secret = 'EEm8ycUK0kOW_upWvzEM035nhB2daM7WZshD1IQEMnFC_4SaqK9gpxNaMx1m9V3MZXoSPvCXqht9o7PM'
 
 # URL = "https://api.paypal.com"
 URL = "https://api.sandbox.paypal.com"
@@ -114,8 +111,6 @@ def validate_timestamp(string, ts_type):
 
 
 def validate_params(params):
-    pp = pprint.PrettyPrinter(indent=2)
-    pp.pprint(params)
     """
     Method that takes care of the input parameter validation. Stop the execution in case of a validation error.
 
@@ -132,6 +127,20 @@ def validate_params(params):
 
     return params
 
+def load_secrets(secrets_file="secrets.yml"):
+    with open(secrets_file, 'r') as stream:
+        try:
+            data = (yaml.load(stream))
+        except Exception as exc:
+            complain("Exception occurred while reading " + secrets_file + ": " + str(exc))
+
+    if "client_id" not in data.keys():
+        complain("Missing client_id in " + secrets_file)
+    if "client_secret" not in data.keys():
+        complain("Missing client_secret in " + secrets_file)
+
+    return data
+
 def check_status_code(code, expectation=200):
     """
     Method that checks the returned status code against the expected status code
@@ -145,13 +154,18 @@ def check_status_code(code, expectation=200):
     if int(code) != int(expectation):
         complain("Received unexpected status code " + str(code) + " != " + str(expectation))
 
-def obtain_auth_token():
+def obtain_auth_token(secrets):
     """
     Method to obtain the authorization token as per the OAuth2 authorization flow
 
+    :param secrets dictionary containing the client_id and client_secret keys and their respective values
+    :type secrets: dict
     :return: authorization token
     :rtype: string
     """
+    client_id = secrets['client_id']
+    client_secret = secrets['client_secret']
+
     auth = HTTPBasicAuth(client_id, client_secret)
     client = BackendApplicationClient(client_id=client_id)
     oauth = OAuth2Session(client=client)
@@ -399,8 +413,9 @@ def main(arguments):
     requests_log.propagate = True
     """
 
-    token = obtain_auth_token()
-    session = OAuth2Session(client_id, token=token)
+    secrets = load_secrets()
+    token = obtain_auth_token(secrets)
+    session = OAuth2Session(secrets['client_id'], token=token)
     trx_ids = get_transaction_list(session, arguments['--from-date'], arguments['--to-date'])
     trx_data = get_transaction_details(session, trx_ids)
     trx_data = combine_transactions(trx_data)
