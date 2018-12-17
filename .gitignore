@@ -117,3 +117,7 @@ dmypy.json
 # Vagrant
 .vagrant
 Vagrant*
+
+# Temp.files
+# Vi/Vim
+*.swp
