@@ -121,3 +121,7 @@ Vagrant*
 # Temp.files
 # Vi/Vim
 *.swp
+
+# Result files
+trx.csv
+trx.tsv
