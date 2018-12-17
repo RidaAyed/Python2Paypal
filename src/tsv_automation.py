@@ -128,6 +128,14 @@ def validate_params(params):
     return params
 
 def load_secrets(secrets_file="secrets.yml"):
+    """
+    Method for loading the secrets from the environment or from the secrets file
+
+    :param secrets_file: file containing the secrets
+    :type secrets_file: string
+    :return: loaded secrets
+    :rtype: dict
+    """
     with open(secrets_file, 'r') as stream:
         try:
             data = (yaml.load(stream))
