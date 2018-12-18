@@ -82,7 +82,7 @@ def test_check_status_code(capsys):
   complain_msg = "Received unexpected status code " + str(code) + " != 200"
   assert_complain(capsys, complain_msg, src.check_status_code, code)
 
-@vcr.use_cassette('vcr_cassettes/auth_secrets.yaml')
+@vcr.use_cassette('vcr_cassettes/auth_secrets.yaml', filter_headers=['authorization'], filter_post_data_parameters=['client_id', 'client_secret'])
 def test_obtain_auth_secrets(capsys):
   secrets = src.load_secrets()
   token = src.obtain_auth_token(secrets)
@@ -92,5 +92,10 @@ def test_obtain_auth_secrets(capsys):
     'client_id': 'broken_id',
     'client_secret': 'broken_secret'
   }
+  complain_msg = 'Unable to obtain authentication token due to exception: (invalid_client) Client Authentication failed'
+  assert_complain(capsys, complain_msg, src.obtain_auth_token, secrets)
+
+@vcr.use_cassette('vcr_cassettes/get_trx_list.yaml', filter_headers=['authorization'], filter_post_data_parameters=['client_id', 'client_secret'])
+def test_get_transaction_list(capsys):
+  secrets = src.load_secrets()
   token = src.obtain_auth_token(secrets)
-  assert type(token) is oauthlib.oauth2.rfc6749.tokens.OAuth2Token

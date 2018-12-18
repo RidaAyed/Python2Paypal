@@ -187,7 +187,10 @@ def obtain_auth_token(secrets):
     auth = HTTPBasicAuth(client_id, client_secret)
     client = BackendApplicationClient(client_id=client_id)
     oauth = OAuth2Session(client=client)
-    token = oauth.fetch_token(token_url=TOKEN_URL, client_id=client_id, client_secret=client_secret, auth=auth)
+    try:
+      token = oauth.fetch_token(token_url=TOKEN_URL, client_id=client_id, client_secret=client_secret, auth=auth)
+    except Exception as exc:
+      complain('Unable to obtain authentication token due to exception: ' + str(exc))
 
     return token
 
