@@ -53,6 +53,7 @@ import requests
 import sys
 import yaml
 
+import traceback
 import pprint
 
 FILENAME = 'trx.tsv'
@@ -142,11 +143,14 @@ def load_secrets(secrets_file=None):
       data['client_id'] = os.environ['CLIENT_ID']
       data['client_secret'] = os.environ['CLIENT_SECRET']
     else:
-      with open(secrets_file, 'r') as stream:
-          try:
-              data = (yaml.load(stream))
-          except Exception as exc:
-              complain("Exception occurred while reading " + secrets_file + ": " + str(exc))
+      try:
+          with open(secrets_file, 'r') as stream:
+              try:
+                  data = (yaml.load(stream))
+              except Exception as exc:
+                  complain("Exception occurred while reading " + secrets_file + ": " + str(exc))
+      except FileNotFoundError as fnf:
+          complain("File not found: " + secrets_file)
 
       if "client_id" not in data.keys():
           complain("Missing client_id in " + secrets_file)
@@ -184,6 +188,7 @@ def obtain_auth_token(secrets):
     client = BackendApplicationClient(client_id=client_id)
     oauth = OAuth2Session(client=client)
     token = oauth.fetch_token(token_url=TOKEN_URL, client_id=client_id, client_secret=client_secret, auth=auth)
+
     return token
 
 def get_transaction_list(session, from_date, to_date):
