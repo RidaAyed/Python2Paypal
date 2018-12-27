@@ -194,7 +194,7 @@ def obtain_auth_token(secrets):
 
     return token
 
-def get_transaction_list(session, from_date, to_date):
+def get_transactions(session, from_date, to_date):
     """
     This method extracts the list of transactions from the given time-frame by calling the PayPal API.
 
@@ -206,13 +206,15 @@ def get_transaction_list(session, from_date, to_date):
     :rtype: list
     """
 
-    result = []
+    i = 0
+    result = {}
+    result[i] = [" Date", "Time", "Name", "Status Code", "Currency", "Value", "To Email Address", "Transaction ID", "Custom Number", "Quantity", "Item Title", "Country Code"]
 
     query_start = datetime.strptime(from_date, "%Y-%m-%dT%H:%M:%S")
     request_end = datetime.strptime(to_date, "%Y-%m-%dT%H:%M:%S")
 
     if (request_end - query_start).days > (3 * 365):
-        complain("The query can go back 3 years maximum")
+        complain("The query can span across 3 years maximum")
     if (query_start - datetime(2016, 7, 1)).days < 0:
         complain("The historical data is available only from July 2016")
 
@@ -233,9 +235,9 @@ def get_transaction_list(session, from_date, to_date):
             params = (
                 ("start_date", query_start.strftime("%Y-%m-%dT%H:%M:%S") + TIMEZONE_OFFSET),
                 ("end_date", query_end.strftime("%Y-%m-%dT%H:%M:%S") + TIMEZONE_OFFSET),
-                ("fields", "transaction_info"),
+                ("fields", "all"),
                 ("page_size", "500"), # The maximum amount of transaction IDs per page is 500
-                ("page", str(page)),
+                ("page", str(page))
             )
 
             response = session.get(TRX_URL, params=params)
@@ -246,7 +248,29 @@ def get_transaction_list(session, from_date, to_date):
 
             # Append the data to the resulting list
             for trx in reply['transaction_details']:
-                result.append(trx['transaction_info']['transaction_id'])
+#                print('TRX DETAILS: '+ str(trx) + '\n')
+                trx_data = []
+
+                trx_data.append(extract_value(trx, ['transaction_info', 'transaction_initiation_date'])[:10])         # Date
+                trx_data.append(extract_value(trx, ['transaction_info', 'transaction_initiation_date'])[12:19])       # Time
+                trx_data.append(extract_value(trx, ['payer_info', 'payer_name', 'alternate_full_name']))              # Name
+                trx_data.append(extract_value(trx, ['transaction_info', 'transaction_status']))                       # Status Code
+                trx_data.append(extract_value(trx, ['transaction_info', 'transaction_amount', 'currency_code']))      # Currency
+                trx_data.append(extract_value(trx, ['transaction_info', 'transaction_amount', 'value']))              # Value
+                trx_data.append(extract_value(trx, ['payer_info', 'email_address']))                                  # To Email Address
+                trx_data.append(extract_value(trx, ['transaction_info', 'transaction_id']))                           # Transaction ID
+                trx_data.append(extract_value(trx, ['transaction_info', 'custom_field']))                             # Custom Number
+                count = 0.0
+                title = ""
+                for item in extract_value(trx, ['cart_info', 'item_details']):
+                    count += float(extract_value(item, ['item_quantity']))
+                    title += extract_value(item, ['item_name']) + "; "
+                trx_data.append(int(count))                                                                           # Quantity
+                trx_data.append(title)                                                                                # Item Title
+                trx_data.append(extract_value(trx, ['shipping_info', 'address', 'country_code']))                     # Country code
+
+                result[i] = trx_data
+                i += 1
 
             page += 1
 
@@ -279,60 +303,6 @@ def extract_value(dataset, keys):
 
     return data
 
-def get_transaction_details(session, trx_list):
-    """
-    Method used to get detailed information for each transaction.
-
-    :param session: Session to be used for the HTTP calls
-    :type session: OAuth2Session object
-    :param trx_list: list of TRX IDs to be queried for
-    :type trx_list: list
-    :return: dict object containing collected details for each transaction data, where primary key is position of the trx in the trx_list
-    :rtype: dict
-    """
-    i = 0
-    result = {}
-
-    result[i] = [" Date", "Time", "Name", "Status Code", "Currency", "Value", "To Email Address", "Transaction ID", "Custom Number", "Quantity", "Item Title", "Country Code"]
-
-    bar = ChargingBar('2/3 Processing trx', max=len(trx_list), suffix = '%(percent).1f%% - %(eta)ds remaining')
-
-    for trx in trx_list:
-        i += 1
-        params = (
-            ("transaction_id", trx),
-            ("fields", "all"),
-        )
-        response = session.get(TRX_URL, params=params)
-        check_status_code(response.status_code)
-
-        reply = json.loads(response.content)['transaction_details'][0]
-        trx_data = []
-
-        trx_data.append(extract_value(reply, ['transaction_info', 'transaction_initiation_date'])[:10])         # Date
-        trx_data.append(extract_value(reply, ['transaction_info', 'transaction_initiation_date'])[12:19])       # Time
-        trx_data.append(extract_value(reply, ['payer_info', 'payer_name', 'alternate_full_name']))              # Name
-        trx_data.append(extract_value(reply, ['transaction_info', 'transaction_status']))                       # Status Code
-        trx_data.append(extract_value(reply, ['transaction_info', 'transaction_amount', 'currency_code']))      # Currency
-        trx_data.append(extract_value(reply, ['transaction_info', 'transaction_amount', 'value']))              # Value
-        trx_data.append(extract_value(reply, ['payer_info', 'email_address']))                                  # To Email Address
-        trx_data.append(extract_value(reply, ['transaction_info', 'transaction_id']))                           # Transaction ID
-        trx_data.append(extract_value(reply, ['transaction_info', 'custom_field']))                             # Custom Number
-        count = 0.0
-        title = ""
-        for item in extract_value(reply, ['cart_info', 'item_details']):
-            count += float(extract_value(item, ['item_quantity']))
-            title += extract_value(item, ['item_name']) + "; "
-        trx_data.append(int(count))                                                                             # Quantity
-        trx_data.append(title)                                                                                  # Item Title
-        trx_data.append(extract_value(reply, ['shipping_info', 'address', 'country_code']))                     # Country code
-
-        result[i] = trx_data
-        bar.next()
-
-    bar.finish()
-    return result
-
 def merge_transactions(base, new):
     """
     Applying some heuristic to merge the transactions that seem like are linked to a single event.
@@ -346,13 +316,22 @@ def merge_transactions(base, new):
     """
 
     result = base
-    
+
     # Check the fields one-by-one
-    for i in range(len(base)):
-        if result[i] == "":
-            # In case of an empty data cell, use the data from the 'new' transaction
-            result[i] = new[i]
-            continue
+    for i in range(max(len(base), len(new))):
+        # Generic element handling
+        try:
+            if result[i] == "":
+                # In case of an empty data cell, use the data from the 'new' transaction
+                result[i] = new[i]
+                continue
+        except IndexError:
+            if len(result) < len(new):
+                # In case there's more elements in the new trx, copy them into the result
+                result.append(new[i])
+                continue
+
+        # Specific element handling
         if i == 4:
             # Processing Currency
             if result[i] != BASE_CURRENCY:
@@ -374,8 +353,8 @@ def merge_transactions(base, new):
                     else:
                         result[i] = new[i]
                 else:
-                    print("WARN: Unexpected situation occurred with transactions\n{}\n{}\n".format(result, new), file=sys.stderr)
-                    print("WARN: Price merging cannot occur correctly.", file=sys.stderr)
+                    print("WARN: Unexpected situation occurred while merging transactions\n{}\n{}\n".format(result, new), file=sys.stderr)
+                    print("WARN: Transaction has been ignored\n")
 
     return result
 
@@ -409,19 +388,20 @@ def combine_transactions(trx_data):
     return result
 
 
-def store_tsv(trx_data):
+def store_tsv(filename, trx_data):
     """
     Method used to write the data into the TSV (table-separated-values) file.
 
+    :param filename: name of the file to write to
+    :type filename: string
     :param trx_data: data content to be written in dict, with primary key that reflects the order for writing
     :type trx_data: dict
     """
     print("Storing the filtered and merged results: {} trx in total.".format(len(trx_data)))
-    with open(FILENAME, 'w') as tsv_file:
+    with open(filename, 'w') as tsv_file:
         writer = csv.writer(tsv_file, delimiter='\t')
         for trx in sorted(trx_data.keys()):
             writer.writerow(trx_data[trx])
-
 
 def main(arguments):
     """
@@ -438,10 +418,9 @@ def main(arguments):
     secrets = load_secrets()
     token = obtain_auth_token(secrets)
     session = OAuth2Session(secrets['client_id'], token=token)
-    trx_ids = get_transaction_list(session, arguments['--from-date'], arguments['--to-date'])
-    trx_data = get_transaction_details(session, trx_ids)
+    trx_data = get_transactions(session, arguments['--from-date'], arguments['--to-date'])
     trx_data = combine_transactions(trx_data)
-    store_tsv(trx_data)
+    store_tsv(FILENAME, trx_data)
 
 #
 # Main script body
