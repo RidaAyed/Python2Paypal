@@ -4,6 +4,7 @@
 Test suite for tsv_automation.py
 """
 
+from requests_oauthlib import OAuth2Session
 from src import tsv_automation as src
 import json
 import oauthlib
@@ -84,7 +85,7 @@ def test_check_status_code(capsys):
 
 @vcr.use_cassette('vcr_cassettes/auth_secrets.yaml', filter_headers=['authorization'], filter_post_data_parameters=['client_id', 'client_secret'])
 def test_obtain_auth_secrets(capsys):
-  secrets = src.load_secrets()
+  secrets = src.load_secrets("secrets.yml")
   token = src.obtain_auth_token(secrets)
   assert type(token) is oauthlib.oauth2.rfc6749.tokens.OAuth2Token
 
@@ -96,6 +97,77 @@ def test_obtain_auth_secrets(capsys):
   assert_complain(capsys, complain_msg, src.obtain_auth_token, secrets)
 
 @vcr.use_cassette('vcr_cassettes/get_trx_list.yaml', filter_headers=['authorization'], filter_post_data_parameters=['client_id', 'client_secret'])
-def test_get_transaction_list(capsys):
+def test_get_transactions(capsys):
   secrets = src.load_secrets()
   token = src.obtain_auth_token(secrets)
+  session = OAuth2Session(secrets['client_id'], token=token)
+
+  complain_msg = 'The query can span across 3 years maximum'
+  assert_complain(capsys, complain_msg, src.get_transactions, session, '2010-07-01T12:12:12', '2018-07-02T11:11:11')
+  complain_msg = 'The historical data is available only from July 2016'
+  assert_complain(capsys, complain_msg, src.get_transactions, session, '2010-07-01T01:01:01', '2010-08-01T13:13:13')
+
+  arguments = {'--from-date': '2016-12-01T00:00:00',
+              '--to-date': '2018-12-27T23:59:59'}
+  trx = src.get_transactions(session, arguments['--from-date'], arguments['--to-date'])
+  assert type(trx) is dict
+  assert len(trx) == 3
+
+def test_extract_value():
+  dataset = {'level1': 
+                  {'level2': 'value'}
+            }
+  assert src.extract_value(dataset, ['level1', 'level2']) == 'value'
+  assert src.extract_value(dataset, 'missing') == ''
+
+def test_merge_transactions(capsys):
+  base = ['', 'b', 'c', 'd', 'CHF', '5']
+  new = ['a', '', 'c', 'd', 'EUR', '4', 'g']
+  result = src.merge_transactions(base, new)
+  
+  # Test filling-in the blanks while merging the transactions
+  assert result[0] == 'a'
+  assert result[1] == 'b'
+  assert result[6] == 'g'
+  assert len(result) == 7
+
+  # Test discarding the transactions in non-base-currency
+  assert float(result[5]) == 4.0
+
+  base = ['a', 'b', 'c', 'd', 'EUR', '4.0']
+  new = ['a', 'b', 'c', 'd', 'EUR', '-4.0']
+  result = src.merge_transactions(base, new)
+
+  # Test handling debit and credit transactions
+  assert result[5] == '-4.0'
+
+  base = ['a', 'b', 'c', 'd', 'EUR', '9.0']
+  new = ['a', 'b', 'c', 'd', 'EUR', '-4.0']
+  result = src.merge_transactions(base, new)
+  captured = capsys.readouterr()
+  assert captured.out == 'WARN: Transaction has been ignored\n\n'
+  assert captured.err == "WARN: Unexpected situation occurred while merging transactions\n['a', 'b', 'c', 'd', 'EUR', '9.0']\n['a', 'b', 'c', 'd', 'EUR', '-4.0']\n\n"
+
+def test_combine_transactions():
+    trx = {'0': ['2018-12-22', '00:00:01', 'c', 'd', 'CHF', '5'],
+           '1': ['2018-12-22', '00:00:01', '', 'd', 'EUR', '4'],
+           '2': ['2018-12-22', '00:00:02', 'c', '', 'CHF', '50'],
+           '3': ['2018-12-22', '00:00:02', 'c', 'd', 'EUR', '40']
+           }
+    result = src.combine_transactions(trx)
+    
+    # Test the result
+    assert len(result) == 2
+    assert result['2018-12-22T00:00:01'][2] == 'c'
+    assert result['2018-12-22T00:00:02'][5] == '40'
+    assert set(result.keys()) == {'2018-12-22T00:00:01', '2018-12-22T00:00:02'}
+
+def test_store_tsv(tmpdir):
+    data = {'0': ['a', 'b'],
+            '1': ['c', 'd']
+            }
+    filename = tmpdir.join('out.tsv')
+    src.store_tsv(str(filename), data)
+    print(filename.read())
+    # Test if the content of the file written is the correct one
+    assert filename.read() == 'a\tb\nc\td\n'
